@@ -414,7 +414,6 @@ export default function Home() {
         });
         if (country) searchParams.set("regionCode", country.toUpperCase());
         if (relevanceLanguage) searchParams.set("relevanceLanguage", relevanceLanguage);
-        if (publishedBefore) searchParams.set("publishedBefore", publishedBefore);
         if (pageToken) searchParams.set("pageToken", pageToken);
         const searchUrl = `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`;
         const sres = await fetch(searchUrl, { signal });
