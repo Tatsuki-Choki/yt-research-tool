@@ -1,26 +1,204 @@
 @import "tailwindcss";
 
+/* デザインガイド2.1 & 2.2準拠 */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* カラートークン */
+  --bg: #FFFFFF;
+  --text-strong: #0F0F0F;
+  --text: #212121;
+  --muted: #606060;
+  --line: #E5E5E5;
+  --accent: #FF0000;
+  --accent-press: #CC0000;
+  --focus: #1A73E8;
+  
+  /* タイポグラフィ */
+  --font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  --font-mono: Consolas, Monaco, "Courier New", monospace;
+  
+  /* スペーシング（8の倍数） */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-xxl: 40px;
+  --spacing-xxxl: 48px;
+  
+  /* コンポーネント */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* リセット */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ベーススタイル */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-family);
+  font-size: 16px; /* md */
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 見出し */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-strong);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+h1 { font-size: 28px; } /* xl */
+h2 { font-size: 20px; } /* lg */
+h3 { font-size: 16px; } /* md */
+
+/* リンク（WCAG AA準拠） */
+a {
+  color: var(--focus);
+  text-decoration: underline;
+  transition: opacity 0.2s;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* ボタン共通スタイル */
+button {
+  font-family: var(--font-family);
+  font-size: 14px; /* sm */
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  cursor: pointer;
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+/* プライマリボタン（YouTube Red限定使用） */
+.btn-primary {
+  background-color: var(--accent);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--accent-press);
+}
+
+.btn-primary:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* セカンダリボタン */
+.btn-secondary {
+  background-color: transparent;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.btn-secondary:hover {
+  background-color: var(--line);
+}
+
+/* 入力フィールド */
+input, select, textarea {
+  font-family: var(--font-family);
+  font-size: 14px; /* sm */
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--bg);
+  color: var(--text);
+  transition: border-color 0.2s;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--focus);
+}
+
+/* テーブル */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px; /* sm */
+}
+
+th {
+  background-color: var(--bg);
+  color: var(--text-strong);
+  font-weight: 600;
+  text-align: left;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--line);
+}
+
+td {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+
+/* カード */
+.card {
+  background-color: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg); /* 24px */
+  box-shadow: var(--shadow-sm);
+}
+
+/* バッジ */
+.badge {
+  display: inline-block;
+  font-size: 12px; /* xs */
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  background-color: var(--line);
+  color: var(--text);
+}
+
+/* ユーティリティクラス */
+.text-muted {
+  color: var(--muted);
+}
+
+.text-strong {
+  color: var(--text-strong);
+}
+
+/* フォーカス表示（アクセシビリティ） */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* スクロールバーのスタイリング */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }

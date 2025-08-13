@@ -4,6 +4,26 @@ import { ArrowLeft, Search, Download, MessageSquare, TrendingUp, Sparkles, Youtu
 import Link from 'next/link'
 import { useState } from 'react'
 
+// デザインガイド2.1 & 2.2準拠のトークン
+const COLORS = {
+  bg: '#FFFFFF',
+  textStrong: '#0F0F0F',
+  text: '#212121',
+  muted: '#606060',
+  line: '#E5E5E5',
+  accent: '#FF0000',
+  accentPress: '#CC0000',
+  focus: '#1A73E8',
+}
+
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+}
+
 export default function GuidePage() {
   const [activeSection, setActiveSection] = useState('getting-started')
 
@@ -17,27 +37,27 @@ export default function GuidePage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen" style={{ backgroundColor: COLORS.bg }}>
       {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors">
+      <header className="sticky top-0 z-10" style={{ backgroundColor: COLORS.bg, borderBottom: `1px solid ${COLORS.line}` }}>
+        <div className="max-w-7xl mx-auto" style={{ padding: `${SPACING.md}px ${SPACING.lg}px` }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center" style={{ gap: `${SPACING.md}px` }}>
+              <Link href="/" className="flex items-center transition-opacity hover:opacity-80" style={{ gap: `${SPACING.sm}px`, color: COLORS.muted }}>
                 <ArrowLeft className="w-5 h-5" />
                 <span className="hidden sm:inline">ツールに戻る</span>
               </Link>
-              <div className="flex items-center gap-2">
-                <Youtube className="w-6 h-6 text-red-600" />
-                <h1 className="text-xl font-bold text-gray-900">使い方ガイド</h1>
+              <div className="flex items-center" style={{ gap: `${SPACING.sm}px` }}>
+                <Youtube className="w-6 h-6" style={{ color: COLORS.accent }} />
+                <h1 className="text-xl font-bold" style={{ color: COLORS.textStrong }}>使い方ガイド</h1>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="lg:grid lg:grid-cols-4 lg:gap-8">
+      <div className="max-w-7xl mx-auto" style={{ padding: `${SPACING.xl}px ${SPACING.lg}px` }}>
+        <div className="lg:grid lg:grid-cols-4" style={{ gap: `${SPACING.xl}px` }}>
           {/* サイドバー（デスクトップ） */}
           <aside className="hidden lg:block">
             <nav className="sticky top-24 space-y-1">
@@ -47,11 +67,25 @@ export default function GuidePage() {
                   <button
                     key={section.id}
                     onClick={() => setActiveSection(section.id)}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                      activeSection === section.id
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
+                    className="w-full flex items-center transition-all"
+                    style={{
+                      gap: `${SPACING.sm}px`,
+                      padding: `${SPACING.sm}px ${SPACING.md}px`,
+                      borderRadius: `${SPACING.sm}px`,
+                      backgroundColor: activeSection === section.id ? COLORS.line : 'transparent',
+                      color: activeSection === section.id ? COLORS.textStrong : COLORS.muted,
+                      fontWeight: activeSection === section.id ? 600 : 400,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (activeSection !== section.id) {
+                        e.currentTarget.style.backgroundColor = '#F5F5F5';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeSection !== section.id) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
+                    }}
                   >
                     <Icon className="w-5 h-5" />
                     <span>{section.label}</span>

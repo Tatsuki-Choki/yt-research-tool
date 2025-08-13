@@ -21,15 +21,40 @@ import {
   BookOpen
 } from 'lucide-react';
 
-// --- 配色トークン（YouTubeライク） ---
+// --- デザインガイド2.1 & 2.2準拠のカラートークン ---
 const COLORS = {
   bg: "#FFFFFF",
-  text: "#0F0F0F",
-  muted: "#606060",
-  line: "#E5E5E5",
-  accent: "#FF0000",
-  accentPress: "#CC0000",
-  focus: "#1A73E8",
+  textStrong: "#0F0F0F",  // 主要テキスト（見出し等）
+  text: "#212121",         // 通常テキスト  
+  muted: "#606060",        // 補助テキスト
+  line: "#E5E5E5",         // 境界線
+  accent: "#FF0000",       // YouTube Red（プライマリアクション限定）
+  accentPress: "#CC0000",  // ホバー時
+  focus: "#1A73E8",        // フォーカス
+};
+
+// --- スペーシング（8の倍数グリッド） ---
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,  // カード・テーブルの外枠パディング
+  xl: 32,
+  xxl: 40,
+};
+
+// --- コンポーネント設定 ---
+const COMPONENT = {
+  borderRadius: {
+    sm: 4,
+    md: 6,
+    lg: 8,
+  },
+  shadow: {
+    sm: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+    md: '0 2px 4px 0 rgba(0, 0, 0, 0.06)',
+    lg: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+  },
 };
 
 // --- 型定義 ---
