@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { 
   Search, 
@@ -226,15 +226,22 @@ export default function Home() {
   const [query, setQuery] = useState<string>("");
   const [minViews, setMinViews] = useState<string>("10000");
   const [country, setCountry] = useState<string>("");
-  const [pageSize, setPageSize] = useState<number>(50);
+  const [relevanceLanguage, setRelevanceLanguage] = useState<string>("ja");
+  // 最大取得件数（検索ページを跨いで収集）
+  const [maxTotal, setMaxTotal] = useState<number>(500);
   const [includeHidden, setIncludeHidden] = useState<boolean>(false);
   const [period, setPeriod] = useState<PeriodKey>("3y");
   const [shortsMode, setShortsMode] = useState<ShortsMode>("exclude");
   const [ratioThreshold, setRatioThreshold] = useState<RatioThreshold>(3);
+  // 表示/検索の並び順
+  const [displayOrder, setDisplayOrder] = useState<"viewCount" | "date" | "relevance">("viewCount");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [videos, setVideos] = useState<VideoRow[]>([]);
+  const [scannedCount, setScannedCount] = useState<number>(0);
+  const [filteredCount, setFilteredCount] = useState<number>(0);
+  const [quotaEstimate, setQuotaEstimate] = useState<number>(0);
 
   const [commentsLoadingFor, setCommentsLoadingFor] = useState<string | null>(null);
   const [commentsByVideo, setCommentsByVideo] = useState<Record<string, CommentRow[]>>({});
@@ -242,6 +249,96 @@ export default function Home() {
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [testReport, setTestReport] = useState<string[]>([]);
   const [mounted, setMounted] = useState(false);
+  // 実行制御
+  const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
+  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [targetCount, setTargetCount] = useState<number>(0); // 0で無効
+
+  // --- 小さなUIコンポーネント（セグメント/チップ） ---
+  const Segments = ({
+    value,
+    options,
+    onChange,
+  }: {
+    value: string;
+    options: { label: string; value: string }[];
+    onChange: (v: string) => void;
+  }) => (
+    <div className="inline-flex rounded-lg border overflow-hidden" style={{ borderColor: COLORS.line }}>
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`px-2.5 py-1.5 text-xs sm:text-sm ${active ? 'bg-red-50 text-red-600' : 'bg-white text-neutral-700'} border-r last:border-r-0`}
+            style={{ borderColor: COLORS.line }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const Chips = ({
+    value,
+    options,
+    onChange,
+  }: {
+    value: number;
+    options: number[];
+    onChange: (v: number) => void;
+  }) => (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((opt) => {
+        const active = opt === value;
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(opt)}
+            className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-neutral-700'}`}
+            style={{ borderColor: COLORS.line }}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const ActiveFilters = () => {
+    const chips: { label: string; onRemove?: () => void }[] = [];
+    if (displayOrder !== 'viewCount') chips.push({ label: `並び順:${displayOrder==='date'?'公開日':'関連度'}`, onRemove: () => setDisplayOrder('viewCount') });
+    if (maxTotal !== 500) chips.push({ label: `最大:${maxTotal}`, onRemove: () => setMaxTotal(500) });
+    if (period !== '3y') chips.push({ label: `期間:${period}` , onRemove: () => setPeriod('3y')});
+    if (shortsMode !== 'exclude') chips.push({ label: `ショート:${shortsMode==='include'?'含む':'のみ'}`, onRemove: () => setShortsMode('exclude') });
+    if (country) chips.push({ label: `国:${country}`, onRemove: () => setCountry("") });
+    if (relevanceLanguage) chips.push({ label: `言語:${relevanceLanguage}`, onRemove: () => setRelevanceLanguage('') });
+    if (ratioThreshold !== 3) chips.push({ label: `登録者比:${ratioThreshold}x`, onRemove: () => setRatioThreshold(3) });
+    if (includeHidden) chips.push({ label: '非公開含む', onRemove: () => setIncludeHidden(false) });
+    if (targetCount > 0) chips.push({ label: `停止:${targetCount}`, onRemove: () => setTargetCount(0) });
+    if (Number(minViews) !== 10000) chips.push({ label: `最低再生:${minViews}`, onRemove: () => setMinViews('10000') });
+    if (!chips.length) return null;
+    return (
+      <div className="flex flex-wrap gap-2 mt-2">
+        {chips.map((c, idx) => (
+          <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border bg-white" style={{ borderColor: COLORS.line }}>
+            {c.label}
+            {c.onRemove && (
+              <button onClick={c.onRemove} className="text-neutral-500 hover:text-neutral-700">×</button>
+            )}
+          </span>
+        ))}
+      </div>
+    );
+  };
   
   useEffect(() => {
     setMounted(true);
@@ -267,159 +364,221 @@ export default function Home() {
 
   const publishedAfter = useMemo(() => calcPublishedAfter(period), [period]);
 
+  // 配列をチャンク分割
+  const chunk = <T,>(arr: T[], size: number): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  };
+
   async function runSearch() {
     setLoading(true);
     setError("");
     setVideos([]);
     setSelected({});
     setExpandedComments({});
+    setScannedCount(0);
+    setFilteredCount(0);
+    setProgress(0);
+    setIsCancelling(false);
     try {
       const q = query.trim() || "薄毛 対策 シャンプー";
       if (!apiKey) throw new Error("APIキーを入力してください。");
+      // Abort/制御セットアップ
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+      const signal = abortRef.current.signal;
 
-      // search.list
-      const searchParams = new URLSearchParams({
-        key: apiKey,
-        part: "snippet",
-        type: "video",
-        maxResults: String(pageSize),
-        q,
-        publishedAfter,
-        order: "relevance",
-      });
-      if (country) {
-        searchParams.set("regionCode", country.toUpperCase());
-      }
-      const searchUrl = `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`;
-      const sres = await fetch(searchUrl);
-      if (!sres.ok) {
-        const body = await sres.json().catch(() => ({}));
-        throw new Error(body?.error?.message || `search.list HTTP ${sres.status}`);
-      }
-      const sjson = await sres.json();
-      const items: unknown[] = sjson.items || [];
-      const videoIds = items.map((it) => (it as Record<string, { videoId?: string }>)?.id?.videoId).filter(Boolean);
-      if (videoIds.length === 0) {
-        setVideos([]);
-        setLoading(false);
-        return;
-      }
+      // ストリーミング処理（ページ単位で増分更新）
+      const orderIndex: Record<string, number> = {};
+      const seenIds = new Set<string>();
+      const channelCache: Record<string, any> = {};
+      const accum: VideoRow[] = [];
+      let pageToken: string | undefined = undefined;
+      let searchRequests = 0;
+      let videoRequests = 0;
+      let channelRequests = 0;
+      do {
+        while (isPausedRef.current) await new Promise((r) => setTimeout(r, 150));
+        if (isCancelling) { abortRef.current?.abort(); break; }
+        const perPage = Math.min(50, Math.max(0, maxTotal - seenIds.size));
+        if (perPage <= 0) break;
+        const searchParams = new URLSearchParams({
+          key: apiKey,
+          part: "snippet",
+          type: "video",
+          maxResults: String(perPage),
+          q,
+          publishedAfter,
+          order: displayOrder === "viewCount" ? "viewCount" : displayOrder === "date" ? "date" : "relevance",
+        });
+        if (country) searchParams.set("regionCode", country.toUpperCase());
+        if (relevanceLanguage) searchParams.set("relevanceLanguage", relevanceLanguage);
+        if (publishedBefore) searchParams.set("publishedBefore", publishedBefore);
+        if (pageToken) searchParams.set("pageToken", pageToken);
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`;
+        const sres = await fetch(searchUrl, { signal });
+        if (!sres.ok) {
+          const body = await sres.json().catch(() => ({}));
+          throw new Error(body?.error?.message || `search.list HTTP ${sres.status}`);
+        }
+        const sjson = await sres.json();
+        const items: any[] = sjson.items || [];
+        const newIds: string[] = [];
+        for (const it of items) {
+          const vid = it?.id?.videoId;
+          if (vid && !seenIds.has(vid)) {
+            seenIds.add(vid);
+            newIds.push(vid);
+            if (orderIndex[vid] === undefined) orderIndex[vid] = Object.keys(orderIndex).length;
+          }
+        }
+        searchRequests += 1;
+        setScannedCount(seenIds.size);
+        setProgress(Math.min(100, Math.round((seenIds.size / Math.max(1, maxTotal)) * 100)));
 
-      // videos.list
-      const vparams = new URLSearchParams({
-        key: apiKey,
-        part: "snippet,statistics,contentDetails",
-        id: videoIds.join(","),
-        maxResults: String(videoIds.length),
-      });
-      const vurl = `https://www.googleapis.com/youtube/v3/videos?${vparams.toString()}`;
-      const vres = await fetch(vurl);
-      if (!vres.ok) {
-        const body = await vres.json().catch(() => ({}));
-        throw new Error(body?.error?.message || `videos.list HTTP ${vres.status}`);
-      }
-      const vjson = await vres.json();
+        if (newIds.length > 0) {
+          const vparams = new URLSearchParams({
+            key: apiKey,
+            part: "snippet,statistics,contentDetails",
+            id: newIds.join(","),
+            maxResults: String(newIds.length),
+          });
+          const vurl = `https://www.googleapis.com/youtube/v3/videos?${vparams.toString()}`;
+          const vres = await fetch(vurl, { signal });
+          if (!vres.ok) {
+            const body = await vres.json().catch(() => ({}));
+            throw new Error(body?.error?.message || `videos.list HTTP ${vres.status}`);
+          }
+          const vjson = await vres.json();
+          const vitems: any[] = vjson.items || [];
+          videoRequests += 1;
 
-      const channelIds = Array.from(
-        new Set((vjson.items || []).map((v: unknown) => (v as VideoData)?.snippet?.channelId).filter(Boolean))
-      );
+          const needChannels = Array.from(new Set(vitems.map((v: any) => v?.snippet?.channelId).filter(Boolean)))
+            .filter((cid) => !channelCache[cid]);
+          if (needChannels.length > 0) {
+            const cparams = new URLSearchParams({
+              key: apiKey,
+              part: "snippet,statistics",
+              id: needChannels.join(","),
+              maxResults: String(needChannels.length),
+            });
+            const curl = `https://www.googleapis.com/youtube/v3/channels?${cparams.toString()}`;
+            const cres = await fetch(curl, { signal });
+            if (!cres.ok) {
+              const body = await cres.json().catch(() => ({}));
+              throw new Error(body?.error?.message || `channels.list HTTP ${cres.status}`);
+            }
+            const cjson = await cres.json();
+            for (const c of cjson.items || []) channelCache[c.id] = c;
+            channelRequests += 1;
+          }
 
-      // channels.list
-      const cparams = new URLSearchParams({
-        key: apiKey,
-        part: "snippet,statistics",
-        id: channelIds.join(","),
-        maxResults: String(channelIds.length),
-      });
-      const curl = `https://www.googleapis.com/youtube/v3/channels?${cparams.toString()}`;
-      const cres = await fetch(curl);
-      if (!cres.ok) {
-        const body = await cres.json().catch(() => ({}));
-        throw new Error(body?.error?.message || `channels.list HTTP ${cres.status}`);
-      }
-      const cjson = await cres.json();
-      const channelMap: Record<string, unknown> = {};
-      for (const c of cjson.items || []) channelMap[c.id] = c;
+          const minViewsNum = Number(minViews || 0);
+          const pageRows: VideoRow[] = vitems
+            .map((video: any) => {
+              const ch = channelCache[video?.snippet?.channelId as string];
+              const subCount = ch?.statistics?.subscriberCount ? Number(ch.statistics.subscriberCount) : undefined;
+              const hidden = Boolean(ch?.statistics?.hiddenSubscriberCount);
+              const countryCode = ch?.snippet?.country || undefined;
+              const vc = video?.statistics?.viewCount ? Number(video.statistics.viewCount) : 0;
+              const lc = video?.statistics?.likeCount ? Number(video.statistics.likeCount) : undefined;
+              const qualifiesRatio = qualifiesByRatio(vc, subCount, hidden, ratioThreshold);
+              const qualifiesByMin = vc >= minViewsNum;
+              const matchedRule: VideoRow["matchedRule"] = qualifiesRatio
+                ? ((`${ratioThreshold}x`) as VideoRow["matchedRule"])
+                : qualifiesByMin
+                ? "minViews"
+                : "none";
+              const isShort = isShortByHeuristic(video as VideoData);
+              return {
+                videoId: video.id,
+                title: video.snippet?.title || "",
+                channelId: video.snippet?.channelId || "",
+                channelTitle: video.snippet?.channelTitle || "",
+                publishedAt: video.snippet?.publishedAt || "",
+                viewCount: vc,
+                likeCount: lc,
+                thumbnailUrl: video.snippet?.thumbnails?.medium?.url || video.snippet?.thumbnails?.default?.url || "",
+                videoUrl: `https://www.youtube.com/watch?v=${video.id}`,
+                channelUrl: `https://www.youtube.com/channel/${video.snippet?.channelId}`,
+                subscriberCount: subCount,
+                hiddenSubscriberCount: hidden,
+                country: countryCode,
+                matchedRule,
+                isShort,
+              } as VideoRow;
+            })
+            .filter((r: VideoRow) => {
+              const countryOk = country ? r.country?.toUpperCase() === country.toUpperCase() : true;
+              const viewsOk = r.viewCount >= Number(minViews || 0);
+              const shortsOk = shortsMode === "include" ? true : shortsMode === "only" ? !!r.isShort : !r.isShort;
+              const ratioOk = r.matchedRule === `${ratioThreshold}x`;
+              
+              // 登録者数非公開の場合
+              if (r.hiddenSubscriberCount) {
+                return countryOk && shortsOk && viewsOk && includeHidden;
+              }
+              
+              // 登録者数公開の場合：両方の条件を満たす必要がある
+              return countryOk && shortsOk && viewsOk && ratioOk;
+            });
 
-      const minViewsNum = Number(minViews || 0);
+          accum.push(...pageRows);
+          // 並び順に合わせて安定化ソート
+          const sorted = [...accum];
+          if (displayOrder === "viewCount") {
+            sorted.sort((a, b) => {
+              if (b.viewCount !== a.viewCount) return b.viewCount - a.viewCount;
+              const ad = new Date(a.publishedAt).getTime();
+              const bd = new Date(b.publishedAt).getTime();
+              if (bd !== ad) return bd - ad;
+              return (a.videoId || "").localeCompare(b.videoId || "");
+            });
+          } else if (displayOrder === "date") {
+            sorted.sort((a, b) => {
+              const ad = new Date(a.publishedAt).getTime();
+              const bd = new Date(b.publishedAt).getTime();
+              if (bd !== ad) return bd - ad;
+              if (b.viewCount !== a.viewCount) return b.viewCount - a.viewCount;
+              return (a.videoId || "").localeCompare(b.videoId || "");
+            });
+          } else {
+            sorted.sort((a, b) => {
+              const ai = orderIndex[a.videoId] ?? Number.MAX_SAFE_INTEGER;
+              const bi = orderIndex[b.videoId] ?? Number.MAX_SAFE_INTEGER;
+              if (ai !== bi) return ai - bi;
+              if (b.viewCount !== a.viewCount) return b.viewCount - a.viewCount;
+              const ad = new Date(a.publishedAt).getTime();
+              const bd = new Date(b.publishedAt).getTime();
+              if (bd !== ad) return bd - ad;
+              return (a.videoId || "").localeCompare(b.videoId || "");
+            });
+          }
+          const limited = targetCount > 0 ? sorted.slice(0, targetCount) : sorted;
+          setFilteredCount(limited.length);
+          setVideos(limited);
+          if (targetCount > 0 && accum.length >= targetCount) {
+            pageToken = undefined; // 早期停止
+          }
+        }
 
-      const rows: VideoRow[] = (vjson.items || [])
-        .map((v: unknown) => {
-          const video = v as {
-            id?: string;
-            snippet?: {
-              title?: string;
-              description?: string;
-              channelId?: string;
-              channelTitle?: string;
-              publishedAt?: string;
-              thumbnails?: {
-                medium?: { url?: string };
-                default?: { url?: string };
-              };
-              tags?: string[];
-            };
-            statistics?: {
-              viewCount?: string;
-              likeCount?: string;
-            };
-            contentDetails?: {
-              duration?: string;
-            };
-          };
-          const ch = channelMap[video?.snippet?.channelId as string] as {
-            statistics?: {
-              subscriberCount?: string;
-              hiddenSubscriberCount?: boolean;
-            };
-            snippet?: {
-              country?: string;
-            };
-          };
-          const subCount = ch?.statistics?.subscriberCount ? Number(ch.statistics.subscriberCount) : undefined;
-          const hidden = Boolean(ch?.statistics?.hiddenSubscriberCount);
-          const countryCode = ch?.snippet?.country || undefined;
-          const vc = video?.statistics?.viewCount ? Number(video.statistics.viewCount) : 0;
-          const lc = video?.statistics?.likeCount ? Number(video.statistics.likeCount) : undefined;
-          const qualifiesRatio = qualifiesByRatio(vc, subCount, hidden, ratioThreshold);
-          const qualifiesByMin = vc >= minViewsNum;
-          const matchedRule: VideoRow["matchedRule"] = qualifiesRatio
-            ? ((`${ratioThreshold}x`) as VideoRow["matchedRule"])
-            : qualifiesByMin
-            ? "minViews"
-            : "none";
-          const isShort = isShortByHeuristic(video as VideoData);
-          return {
-            videoId: video.id,
-            title: video.snippet?.title || "",
-            channelId: video.snippet?.channelId || "",
-            channelTitle: video.snippet?.channelTitle || "",
-            publishedAt: video.snippet?.publishedAt || "",
-            viewCount: vc,
-            likeCount: lc,
-            thumbnailUrl: video.snippet?.thumbnails?.medium?.url || video.snippet?.thumbnails?.default?.url || "",
-            videoUrl: `https://www.youtube.com/watch?v=${video.id}`,
-            channelUrl: `https://www.youtube.com/channel/${video.snippet?.channelId}`,
-            subscriberCount: subCount,
-            hiddenSubscriberCount: hidden,
-            country: countryCode,
-            matchedRule,
-            isShort,
-          } as VideoRow;
-        })
-        .filter((r: VideoRow) => {
-          const countryOk = country ? r.country?.toUpperCase() === country.toUpperCase() : true;
-          const viewsOk = r.viewCount >= Number(minViews || 0);
-          const shortsOk = shortsMode === "include" ? true : shortsMode === "only" ? !!r.isShort : !r.isShort;
-          return countryOk && shortsOk && (includeHidden ? viewsOk : r.matchedRule === `${ratioThreshold}x`);
-        })
-        .sort((a: VideoRow, b: VideoRow) => b.viewCount - a.viewCount);
+        pageToken = sjson.nextPageToken;
+      } while (pageToken && seenIds.size < maxTotal);
 
-      setVideos(rows);
+      // クォータ見積り
+      const quota = searchRequests * 100 + videoRequests + channelRequests;
+      setQuotaEstimate(quota);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "検索に失敗しました");
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        setError("検索を中断しました");
+      } else {
+        setError(e instanceof Error ? e.message : "検索に失敗しました");
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
+      setIsCancelling(false);
     }
   }
 
@@ -660,6 +819,10 @@ export default function Home() {
                       Shorts
                     </span>
                   )}
+                  {/* 並び順のヒントバッジ */}
+                  <span className="absolute top-1 left-1 text-[10px] text-white bg-black bg-opacity-60 px-1.5 py-0.5 rounded">
+                    {displayOrder === 'viewCount' ? '再生数順' : displayOrder === 'date' ? '公開日順' : '関連度'}
+                  </span>
                 </div>
               </div>
               <div className="flex-1 min-w-0">
@@ -879,6 +1042,9 @@ export default function Home() {
                 <Filter className="w-5 h-5"/>
               </button>
             </div>
+            {!showFilters && (
+              <ActiveFilters />
+            )}
             {showFilters && (
               <div className="space-y-3 mb-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -923,30 +1089,16 @@ export default function Home() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs text-neutral-600 mb-1 block">件数</label>
-                    <select
-                      className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
-                      style={{ borderColor: COLORS.line }}
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
-                    >
-                      <option value={50}>50</option>
-                      <option value={20}>20</option>
-                      <option value={10}>10</option>
-                    </select>
+                    <label className="text-xs text-neutral-600 mb-1 block">最大取得件数</label>
+                    <Chips value={maxTotal} options={[50,100,200,300,500]} onChange={setMaxTotal} />
                   </div>
                   <div>
                     <label className="text-xs text-neutral-600 mb-1 block">ショート</label>
-                    <select
-                      className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
-                      style={{ borderColor: COLORS.line }}
+                    <Segments
                       value={shortsMode}
-                      onChange={(e) => setShortsMode(e.target.value as ShortsMode)}
-                    >
-                      <option value="exclude">除外</option>
-                      <option value="include">含む</option>
-                      <option value="only">のみ</option>
-                    </select>
+                      options={[{label:'除外',value:'exclude'},{label:'含む',value:'include'},{label:'のみ',value:'only'}]}
+                      onChange={(v)=>setShortsMode(v as ShortsMode)}
+                    />
                   </div>
                   <div>
                     <label className="text-xs text-neutral-600 mb-1 block">登録者比</label>
@@ -961,6 +1113,27 @@ export default function Home() {
                       <option value={1}>1倍以上</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="text-xs text-neutral-600 mb-1 block">並び順</label>
+                    <Segments
+                      value={displayOrder}
+                      options={[{label:'再生数',value:'viewCount'},{label:'公開日',value:'date'},{label:'関連度',value:'relevance'}]}
+                      onChange={(v)=>setDisplayOrder(v as any)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-neutral-600 mb-1 block">関連言語</label>
+                    <select
+                      className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
+                      style={{ borderColor: COLORS.line }}
+                      value={relevanceLanguage}
+                      onChange={(e) => setRelevanceLanguage(e.target.value)}
+                    >
+                      <option value="">自動</option>
+                      <option value="ja">日本語</option>
+                      <option value="en">英語</option>
+                    </select>
+                  </div>
                 </div>
                 <label className="flex items-center gap-2">
                   <input
@@ -971,6 +1144,18 @@ export default function Home() {
                   />
                   <span className="text-xs">登録者数非公開も含める</span>
                 </label>
+                <div>
+                  <label className="text-xs text-neutral-600 mb-1 block">停止条件（表示がN件に達したら停止）</label>
+                  <input
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none"
+                    style={{ borderColor: COLORS.line }}
+                    type="number"
+                    min={0}
+                    placeholder="0（無効）"
+                    value={targetCount}
+                    onChange={(e) => setTargetCount(Number(e.target.value))}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -1021,6 +1206,19 @@ export default function Home() {
                 </div>
               </div>
               <div>
+                <label className="text-sm text-neutral-600">関連言語</label>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
+                  style={{ borderColor: COLORS.line }}
+                  value={relevanceLanguage}
+                  onChange={(e) => setRelevanceLanguage(e.target.value)}
+                >
+                  <option value="">自動</option>
+                  <option value="ja">日本語（ja）</option>
+                  <option value="en">英語（en）</option>
+                </select>
+              </div>
+              <div>
                 <label className="text-sm text-neutral-600">対象期間</label>
                 <select
                   className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
@@ -1037,30 +1235,36 @@ export default function Home() {
                 </select>
               </div>
               <div>
-                <label className="text-sm text-neutral-600">取得件数</label>
-                <select
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
+                <label className="text-sm text-neutral-600">最大取得件数</label>
+                <Chips value={maxTotal} options={[50,100,200,300,500]} onChange={setMaxTotal} />
+              </div>
+              <div>
+                <label className="text-sm text-neutral-600">並び順</label>
+                <Segments
+                  value={displayOrder}
+                  options={[{label:'再生数',value:'viewCount'},{label:'公開日',value:'date'},{label:'関連度',value:'relevance'}]}
+                  onChange={(v)=>setDisplayOrder(v as any)}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-neutral-600">停止条件（表示がN件に達したら停止）</label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none"
                   style={{ borderColor: COLORS.line }}
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  <option value={50}>50（既定）</option>
-                  <option value={20}>20</option>
-                  <option value={10}>10</option>
-                </select>
+                  type="number"
+                  min={0}
+                  placeholder="0（無効）"
+                  value={targetCount}
+                  onChange={(e) => setTargetCount(Number(e.target.value))}
+                />
               </div>
               <div>
                 <label className="text-sm text-neutral-600">ショートの扱い</label>
-                <select
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none bg-white"
-                  style={{ borderColor: COLORS.line }}
+                <Segments
                   value={shortsMode}
-                  onChange={(e) => setShortsMode(e.target.value as ShortsMode)}
-                >
-                  <option value="exclude">ショートを含めない（既定）</option>
-                  <option value="include">ショートを含める</option>
-                  <option value="only">ショートのみ</option>
-                </select>
+                  options={[{label:'除外',value:'exclude'},{label:'含む',value:'include'},{label:'のみ',value:'only'}]}
+                  onChange={(v)=>setShortsMode(v as ShortsMode)}
+                />
               </div>
               <div>
                 <label className="text-sm text-neutral-600">登録者比しきい値</label>
@@ -1090,6 +1294,9 @@ export default function Home() {
             </div>
           </div>
 
+          <div className="mt-2">
+            <ActiveFilters />
+          </div>
           <div className="mt-4 flex flex-col sm:flex-row gap-2">
             <button
               onClick={runSearch}
@@ -1100,6 +1307,24 @@ export default function Home() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4"/>}
               検索
             </button>
+            {loading && (
+              <button
+                onClick={() => { setIsPaused((p) => !p); }}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border"
+                style={{ borderColor: COLORS.line }}
+              >
+                {isPaused ? '再開' : '一時停止'}
+              </button>
+            )}
+            {loading && (
+              <button
+                onClick={() => { setIsCancelling(true); abortRef.current?.abort(); }}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-red-600"
+                style={{ borderColor: COLORS.line }}
+              >
+                中断
+              </button>
+            )}
             <button
               onClick={exportVideosCSV}
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border"
@@ -1121,13 +1346,65 @@ export default function Home() {
             )}
           </div>
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-          {mounted && publishedAfter && (
-            <p className="mt-2 text-xs text-neutral-500">
-              対象期間: {new Date(publishedAfter).toLocaleDateString('ja-JP')} 以降
-            </p>
-          )}
+          <div className="mt-2 text-xs text-neutral-500 space-y-1">
+            {mounted && publishedAfter && (
+              <p>対象期間: {new Date(publishedAfter).toLocaleDateString('ja-JP')} 以降</p>
+            )}
+            {(scannedCount > 0 || filteredCount > 0) && (
+              <p>走査件数: {scannedCount.toLocaleString()} 件 ／ 表示件数: {filteredCount.toLocaleString()} 件</p>
+            )}
+            {quotaEstimate > 0 && (
+              <p>APIクォータ見積り: 約 {quotaEstimate} ユニット</p>
+            )}
+            {/* 進捗バーは上段やモバイルバーにも表示するためここは補助表示のまま */}
+            {loading && (
+              <div className="w-full h-1 bg-neutral-200 rounded">
+                <div className="h-1 bg-red-500 rounded" style={{ width: `${progress}%` }} />
+              </div>
+            )}
+          </div>
         </div>
       </section>
+
+      {/* モバイル下部アクションバー */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t bg-white" style={{ borderColor: COLORS.line }}>
+        <div className="mx-auto max-w-6xl px-4 py-2 flex items-center gap-2">
+          <button
+            onClick={runSearch}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white"
+            style={{ backgroundColor: COLORS.accent }}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin"/> : <Search className="w-4 h-4"/>}
+            検索
+          </button>
+          {loading && (
+            <button
+              onClick={() => { setIsPaused((p) => !p); }}
+              className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border"
+              style={{ borderColor: COLORS.line }}
+            >
+              {isPaused ? '再開' : '一時停止'}
+            </button>
+          )}
+          {loading && (
+            <button
+              onClick={() => { setIsCancelling(true); abortRef.current?.abort(); }}
+              className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-red-600"
+              style={{ borderColor: COLORS.line }}
+            >
+              中断
+            </button>
+          )}
+        </div>
+        {loading && (
+          <div className="px-4 pb-2">
+            <div className="w-full h-2 bg-neutral-200 rounded">
+              <div className="h-2 bg-red-500 rounded" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* 結果表示（レスポンシブ対応） */}
       <section className="mx-auto max-w-6xl px-4 pb-16">
@@ -1158,10 +1435,24 @@ export default function Home() {
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>サムネ</th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>タイトル</th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>チャンネル</th>
-                <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>再生数</th>
+                <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>
+                  <span className="inline-flex items-center gap-1">
+                    再生数
+                    {displayOrder === 'viewCount' && (
+                      <span className="text-neutral-400">▾</span>
+                    )}
+                  </span>
+                </th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>登録者数</th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>高評価</th>
-                <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>公開日</th>
+                <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>
+                  <span className="inline-flex items-center gap-1">
+                    公開日
+                    {displayOrder === 'date' && (
+                      <span className="text-neutral-400">▾</span>
+                    )}
+                  </span>
+                </th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>国</th>
                 <th className="p-3 border-b" style={{ borderColor: COLORS.line }}>操作</th>
               </tr>
@@ -1189,6 +1480,9 @@ export default function Home() {
                         <div className="relative w-32" style={{ aspectRatio: '16 / 9' }}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={v.thumbnailUrl} alt={v.title} className="absolute inset-0 w-full h-full object-cover rounded"/>
+                          {v.isShort && (
+                            <span className="absolute bottom-1 right-1 text-[10px] text-white bg-black bg-opacity-75 px-1.5 py-0.5 rounded">Shorts</span>
+                          )}
                         </div>
                       </a>
                     </td>

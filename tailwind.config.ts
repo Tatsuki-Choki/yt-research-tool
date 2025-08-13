@@ -6,6 +6,16 @@ export default {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: [
+    'hidden',
+    'block',
+    'lg:block',
+    'lg:hidden',
+    'lg:flex',
+    'lg:grid',
+    'lg:grid-cols-4',
+    'md:grid-cols-2',
+  ],
   theme: {
     extend: {
       colors: {
