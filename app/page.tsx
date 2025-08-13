@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { 
   Search, 
   Settings2, 
@@ -17,7 +18,7 @@ import {
   Eye,
   Users,
   ThumbsUp,
-  Calendar
+  BookOpen
 } from 'lucide-react';
 
 // --- 配色トークン（YouTubeライク） ---
@@ -742,6 +743,14 @@ export default function Home() {
               <div className="w-6 h-6 md:w-7 md:h-7 rounded-sm" style={{ backgroundColor: COLORS.accent }} />
               <h1 className="text-lg md:text-xl font-semibold">YT分析</h1>
               <span className="hidden sm:inline-block ml-1 text-xs md:text-sm text-neutral-500">MVP</span>
+              <Link
+                href="/guide"
+                className="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-sm hover:bg-gray-100 transition-colors"
+                title="使い方ガイド"
+              >
+                <BookOpen className="w-4 h-4"/>
+                <span className="hidden sm:inline">ガイド</span>
+              </Link>
             </div>
             {/* デスクトップ：インライン表示 */}
             <div className="hidden lg:flex items-center gap-2">
